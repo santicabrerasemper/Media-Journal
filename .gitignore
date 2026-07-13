@@ -1,0 +1,26 @@
+# Gradle / Android build output
+.gradle/
+build/
+**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Local machine config
+local.properties
+
+# Generated binaries and reports
+*.apk
+*.aab
+*.dex
+*.class
+
+# JVM crash dumps and heap dumps
+*.hprof
+hs_err_pid*
+java_pid*.hprof
+
+# OS files
+.DS_Store
+Thumbs.db
