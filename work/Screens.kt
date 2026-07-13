@@ -8,9 +8,11 @@ package com.example.mediajournal
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -29,6 +32,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +57,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.time.Month
 import java.time.format.TextStyle
 import java.util.Locale
@@ -65,6 +70,7 @@ fun HomeScreen(
     onStatusSelected: (ContentStatus?) -> Unit,
     onSearchChanged: (String) -> Unit,
     onAdd: () -> Unit,
+    onMarkFinished: (TrackedContent) -> Unit,
     onOpen: (Long) -> Unit
 ) {
     Scaffold(
@@ -74,7 +80,16 @@ fun HomeScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd) { Text("+") }
+            val selectedType = state.selectedType
+            if (selectedType == null) {
+                FloatingActionButton(onClick = onAdd) { Text("+") }
+            } else {
+                ExtendedFloatingActionButton(
+                    onClick = onAdd,
+                    icon = { Text("+") },
+                    text = { Text(selectedType.label) }
+                )
+            }
         }
     ) { padding ->
         LazyColumn(
@@ -85,6 +100,9 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
+                HomeSummaryHeader(summary = state.summary)
+            }
+            item {
                 OutlinedTextField(
                     value = state.searchQuery,
                     onValueChange = onSearchChanged,
@@ -94,13 +112,8 @@ fun HomeScreen(
                 )
             }
             item {
-                Text("Tipo de contenido", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                FilterRow(
-                    allLabel = "Todo",
+                TypeTabs(
                     selected = state.selectedType,
-                    values = ContentType.entries,
-                    label = { it.label },
                     onSelected = onTypeSelected
                 )
             }
@@ -123,43 +136,89 @@ fun HomeScreen(
                 }
             } else {
                 items(state.contents, key = { it.id }) { content ->
-                    ContentCard(content = content, onClick = { onOpen(content.id) })
+                    ContentCard(
+                        content = content,
+                        onClick = { onOpen(content.id) },
+                        onMarkFinished = { onMarkFinished(content) }
+                    )
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun <T> FilterRow(
-    allLabel: String,
-    selected: T?,
-    values: List<T>,
-    label: (T) -> String,
-    onSelected: (T?) -> Unit
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilterChip(
-            selected = selected == null,
-            onClick = { onSelected(null) },
-            label = { Text(allLabel) }
+fun HomeSummaryHeader(summary: HomeSummary) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "Tu biblioteca",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
         )
-        values.forEach { value ->
-            FilterChip(
-                selected = selected == value,
-                onClick = { onSelected(value) },
-                label = { Text(label(value)) }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            SummaryMetric(
+                label = "En progreso",
+                value = "${summary.inProgress}",
+                modifier = Modifier.weight(1f),
+                container = Color(0xFFE4F4ED)
+            )
+            SummaryMetric(
+                label = "Este mes",
+                value = "${summary.finishedThisMonth}",
+                modifier = Modifier.weight(1f),
+                container = Color(0xFFFFE5DF)
+            )
+            SummaryMetric(
+                label = "Pendientes",
+                value = "${summary.pending}",
+                modifier = Modifier.weight(1f),
+                container = Color(0xFFE8E1FF)
             )
         }
     }
 }
 
 @Composable
-fun ContentCard(content: TrackedContent, onClick: () -> Unit) {
+fun SummaryMetric(label: String, value: String, modifier: Modifier = Modifier, container: Color) {
+    Column(
+        modifier = modifier
+            .background(container, RoundedCornerShape(8.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun TypeTabs(
+    selected: ContentType?,
+    onSelected: (ContentType?) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = selected == null,
+            onClick = { onSelected(null) },
+            label = { Text("Todo") }
+        )
+        ContentType.entries.forEach { value ->
+            FilterChip(
+                selected = selected == value,
+                onClick = { onSelected(value) },
+                label = { Text(value.label) }
+            )
+        }
+    }
+}
+
+@Composable
+fun ContentCard(content: TrackedContent, onClick: () -> Unit, onMarkFinished: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -167,28 +226,63 @@ fun ContentCard(content: TrackedContent, onClick: () -> Unit) {
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = typeColor(content.type).copy(alpha = 0.14f))
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            TypeBadge(content.type)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = content.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${content.type.label} - ${content.status.label}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TypeBadge(content.type)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = content.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = listOfNotNull(content.type.label, content.genre).joinToString(" - "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                RatingPill(content.rating)
             }
-            RatingPill(content.rating)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                StatusPill(content.status)
+                if (content.status != ContentStatus.FINISHED) {
+                    TextButton(onClick = onMarkFinished) {
+                        Text("Terminar")
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+fun StatusPill(status: ContentStatus) {
+    val container = when (status) {
+        ContentStatus.PENDING -> Color(0xFFFFE5DF)
+        ContentStatus.IN_PROGRESS -> Color(0xFFE8E1FF)
+        ContentStatus.FINISHED -> Color(0xFFE4F4ED)
+        ContentStatus.ABANDONED -> Color(0xFFF0E7F2)
+    }
+    Box(
+        modifier = Modifier
+            .background(container, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(status.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -229,14 +323,10 @@ fun RatingPill(rating: Int?) {
     Box(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 9.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = rating?.let { "$it/5" } ?: "-",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold
-        )
+        RatingStars(rating = rating, compact = true)
     }
 }
 
@@ -450,18 +540,38 @@ fun <T> SelectableRow(
 
 @Composable
 fun RatingSelector(rating: Int?, onSelected: (Int?) -> Unit) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(top = 8.dp)
     ) {
-        OutlinedButton(onClick = { onSelected(null) }) { Text("Sin nota") }
-        (1..5).forEach { value ->
-            if (rating == value) {
-                Button(onClick = { onSelected(value) }) { Text("$value") }
-            } else {
-                OutlinedButton(onClick = { onSelected(value) }) { Text("$value") }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            (1..5).forEach { value ->
+                Text(
+                    text = if ((rating ?: 0) >= value) "\u2605" else "\u2606",
+                    color = if ((rating ?: 0) >= value) Color(0xFFFFB4A2) else MaterialTheme.colorScheme.outline,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onSelected(value) }
+                )
             }
+        }
+        TextButton(onClick = { onSelected(null) }) {
+            Text(if (rating == null) "Sin nota seleccionada" else "Quitar nota")
+        }
+    }
+}
+
+@Composable
+fun RatingStars(rating: Int?, compact: Boolean = false) {
+    val value = rating ?: 0
+    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 3.dp)) {
+        (1..5).forEach { index ->
+            Text(
+                text = if (value >= index) "\u2605" else "\u2606",
+                color = if (value >= index) Color(0xFFFFB4A2) else MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
+                fontSize = if (compact) 14.sp else 22.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -473,7 +583,8 @@ fun DetailScreen(
     onBack: () -> Unit,
     onEdit: (Long) -> Unit,
     onDeleted: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onStatusChanged: (ContentStatus) -> Unit
 ) {
     LaunchedEffect(state.deleted) {
         if (state.deleted) onDeleted()
@@ -493,35 +604,137 @@ fun DetailScreen(
                 Text("Cargando...")
             }
         } else {
-            Column(
+            LazyColumn(
                 modifier = Modifier
                     .padding(padding)
                     .fillMaxSize()
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TypeBadge(content.type)
-                    Column {
-                        Text(content.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("${content.type.label} - ${content.status.label}")
+                item {
+                    DetailHeader(content)
+                }
+                item {
+                    DetailQuickActions(
+                        content = content,
+                        onEdit = { onEdit(content.id) },
+                        onStatusChanged = onStatusChanged
+                    )
+                }
+                item {
+                    DetailSection(title = "Datos") {
+                        InfoLine("Tipo", content.type.label)
+                        InfoLine("Genero", content.genre ?: "-")
+                        InfoLine("Estado", content.status.label)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Calificacion", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (content.rating == null) {
+                                Text("Sin calificar", fontWeight = FontWeight.SemiBold)
+                            } else {
+                                RatingStars(content.rating)
+                            }
+                        }
                     }
                 }
-                InfoLine("Calificacion", content.rating?.let { "$it/5" } ?: "Sin calificar")
-                InfoLine("Genero", content.genre ?: "-")
-                InfoLine("Inicio", content.startDate?.toString() ?: "-")
-                InfoLine("Finalizacion", content.finishedDate?.toString() ?: "-")
-                Text("Notas", fontWeight = FontWeight.SemiBold)
-                Text(content.notes ?: "Sin notas")
-                Spacer(Modifier.weight(1f))
-                Button(onClick = { onEdit(content.id) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Editar")
+                item {
+                    DetailSection(title = "Fechas") {
+                        InfoLine("Agregado", content.createdAt.toLocalDate().toString())
+                        InfoLine("Inicio", content.startDate?.toString() ?: "-")
+                        InfoLine("Finalizacion", content.finishedDate?.toString() ?: "-")
+                    }
                 }
-                OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
-                    Text("Eliminar")
+                item {
+                    DetailSection(title = "Notas") {
+                        Text(
+                            text = content.notes ?: "Sin notas",
+                            color = if (content.notes == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+                        Text("Eliminar")
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun DetailHeader(content: TrackedContent) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(typeColor(content.type).copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            TypeBadge(content.type)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    content.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    listOfNotNull(content.type.label, content.genre).joinToString(" - "),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            StatusPill(content.status)
+            RatingStars(content.rating)
+        }
+    }
+}
+
+@Composable
+fun DetailQuickActions(
+    content: TrackedContent,
+    onEdit: () -> Unit,
+    onStatusChanged: (ContentStatus) -> Unit
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(onClick = onEdit) {
+            Text("Editar")
+        }
+        if (content.status != ContentStatus.FINISHED) {
+            OutlinedButton(onClick = { onStatusChanged(ContentStatus.FINISHED) }) {
+                Text("Terminar")
+            }
+        }
+        if (content.status != ContentStatus.IN_PROGRESS) {
+            OutlinedButton(onClick = { onStatusChanged(ContentStatus.IN_PROGRESS) }) {
+                Text("En progreso")
+            }
+        }
+        if (content.status != ContentStatus.ABANDONED) {
+            OutlinedButton(onClick = { onStatusChanged(ContentStatus.ABANDONED) }) {
+                Text("Abandonar")
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        content()
     }
 }
 
@@ -599,7 +812,7 @@ fun StatsScreen(
                 item { Text("No hay contenido terminado en este mes.") }
             } else {
                 items(stats!!.finishedContents) { content ->
-                    ContentCard(content = content, onClick = {})
+                    ContentCard(content = content, onClick = {}, onMarkFinished = {})
                 }
             }
         }
@@ -651,7 +864,7 @@ fun HistoricalScreen(
             stats?.bestRated?.let { content ->
                 item {
                     Text("Mejor calificado", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    ContentCard(content = content, onClick = {})
+                    ContentCard(content = content, onClick = {}, onMarkFinished = {})
                 }
             }
         }

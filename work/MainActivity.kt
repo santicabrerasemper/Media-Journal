@@ -99,6 +99,7 @@ fun MediaJournalApp(repository: ContentRepository) {
                     onStatusSelected = vm::setStatus,
                     onSearchChanged = vm::setSearchQuery,
                     onAdd = { navController.navigate(Routes.add(state.selectedType)) },
+                    onMarkFinished = vm::markFinished,
                     onOpen = { id -> navController.navigate(Routes.detail(id)) }
                 )
             }
@@ -173,7 +174,8 @@ fun MediaJournalApp(repository: ContentRepository) {
                             popUpTo(Routes.Home) { inclusive = true }
                         }
                     },
-                    onDelete = vm::delete
+                    onDelete = vm::delete,
+                    onStatusChanged = vm::updateStatus
                 )
             }
             composable(Routes.Stats) {

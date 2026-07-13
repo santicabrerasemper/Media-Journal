@@ -20,7 +20,14 @@ data class HomeUiState(
     val contents: List<TrackedContent> = emptyList(),
     val selectedType: ContentType? = null,
     val selectedStatus: ContentStatus? = null,
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    val summary: HomeSummary = HomeSummary()
+)
+
+data class HomeSummary(
+    val inProgress: Int = 0,
+    val finishedThisMonth: Int = 0,
+    val pending: Int = 0
 )
 
 class HomeViewModel(
@@ -36,6 +43,7 @@ class HomeViewModel(
         selectedStatus,
         searchQuery
     ) { contents, type, status, query ->
+        val today = LocalDate.now()
         val filtered = contents
             .filter { type == null || it.type == type }
             .filter { status == null || it.status == status }
@@ -45,7 +53,18 @@ class HomeViewModel(
             contents = filtered,
             selectedType = type,
             selectedStatus = status,
-            searchQuery = query
+            searchQuery = query,
+            summary = HomeSummary(
+                inProgress = contents.count { it.status == ContentStatus.IN_PROGRESS },
+                finishedThisMonth = contents.count {
+                    val finishedDate = it.finishedDate
+                    it.status == ContentStatus.FINISHED &&
+                        finishedDate != null &&
+                        finishedDate.year == today.year &&
+                        finishedDate.monthValue == today.monthValue
+                },
+                pending = contents.count { it.status == ContentStatus.PENDING }
+            )
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
@@ -59,6 +78,19 @@ class HomeViewModel(
 
     fun setSearchQuery(query: String) {
         searchQuery.value = query
+    }
+
+    fun markFinished(content: TrackedContent) {
+        val today = LocalDate.now()
+        viewModelScope.launch {
+            repository.save(
+                content.copy(
+                    status = ContentStatus.FINISHED,
+                    startDate = content.startDate ?: today,
+                    finishedDate = today
+                )
+            )
+        }
     }
 }
 
@@ -85,6 +117,20 @@ class DetailViewModel(
         viewModelScope.launch {
             repository.delete(content)
             deleted.value = true
+        }
+    }
+
+    fun updateStatus(status: ContentStatus) {
+        val content = uiState.value.content ?: return
+        val today = LocalDate.now()
+        viewModelScope.launch {
+            repository.save(
+                content.copy(
+                    status = status,
+                    startDate = content.startDate ?: today.takeIf { status != ContentStatus.PENDING },
+                    finishedDate = today.takeIf { status == ContentStatus.FINISHED }
+                )
+            )
         }
     }
 }
