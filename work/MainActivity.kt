@@ -71,13 +71,13 @@ fun MediaJournalApp(repository: ContentRepository) {
                         selected = currentRoute == Routes.Stats,
                         onClick = { navController.navigate(Routes.Stats) },
                         icon = { Text("G") },
-                        label = { Text("Stats") }
+                        label = { Text("Estadísticas") }
                     )
                     NavigationBarItem(
                         selected = currentRoute == Routes.History,
                         onClick = { navController.navigate(Routes.History) },
                         icon = { Text("H") },
-                        label = { Text("Historico") }
+                        label = { Text("Histórico") }
                     )
                 }
             }
@@ -128,6 +128,7 @@ fun MediaJournalApp(repository: ContentRepository) {
                     onStatusChanged = vm::updateStatus,
                     onRatingChanged = vm::updateRating,
                     onGenreChanged = vm::updateGenre,
+                    onCoverUrlChanged = vm::updateCoverUrl,
                     onNotesChanged = vm::updateNotes,
                     onSave = vm::save,
                     onBack = { navController.popBackStack() }
@@ -150,6 +151,7 @@ fun MediaJournalApp(repository: ContentRepository) {
                     onStatusChanged = vm::updateStatus,
                     onRatingChanged = vm::updateRating,
                     onGenreChanged = vm::updateGenre,
+                    onCoverUrlChanged = vm::updateCoverUrl,
                     onNotesChanged = vm::updateNotes,
                     onSave = vm::save,
                     onBack = { navController.popBackStack() }

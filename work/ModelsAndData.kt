@@ -13,6 +13,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +41,7 @@ data class TrackedContent(
     val status: ContentStatus,
     val rating: Int? = null,
     val genre: String? = null,
+    val coverUrl: String? = null,
     val notes: String? = null,
     val startDate: LocalDate? = null,
     val finishedDate: LocalDate? = null,
@@ -79,6 +82,7 @@ data class TrackedContentEntity(
     val status: ContentStatus,
     val rating: Int?,
     val genre: String?,
+    val coverUrl: String?,
     val notes: String?,
     val startDate: LocalDate?,
     val finishedDate: LocalDate?,
@@ -143,7 +147,7 @@ interface TrackedContentDao {
     suspend fun delete(content: TrackedContentEntity)
 }
 
-@Database(entities = [TrackedContentEntity::class], version = 1, exportSchema = false)
+@Database(entities = [TrackedContentEntity::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun trackedContentDao(): TrackedContentDao
@@ -158,7 +162,22 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "media_journal.db"
-                ).build().also { instance = it }
+                )
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .build()
+                    .also { instance = it }
+            }
+        }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE tracked_content SET rating = rating * 2 WHERE rating IS NOT NULL AND rating <= 5")
+            }
+        }
+
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE tracked_content ADD COLUMN coverUrl TEXT")
             }
         }
     }
@@ -242,7 +261,7 @@ class RoomContentRepository(
                     title = "The Bear",
                     type = ContentType.SERIES,
                     status = ContentStatus.IN_PROGRESS,
-                    rating = 4,
+                    rating = 8,
                     genre = "Drama",
                     notes = "Temporada actual en progreso.",
                     startDate = today.minusDays(18),
@@ -255,7 +274,7 @@ class RoomContentRepository(
                     title = "Dune: Part Two",
                     type = ContentType.MOVIE,
                     status = ContentStatus.FINISHED,
-                    rating = 5,
+                    rating = 10,
                     genre = "Ciencia ficcion",
                     notes = "Gran cierre visual.",
                     startDate = today.minusDays(7),
@@ -267,8 +286,8 @@ class RoomContentRepository(
                     title = "Proyecto Hail Mary",
                     type = ContentType.BOOK,
                     status = ContentStatus.FINISHED,
-                    rating = 5,
-                    genre = "Sci-fi",
+                    rating = 10,
+                    genre = "Sci-fi, Novela",
                     notes = "Lectura muy agil.",
                     startDate = today.minusDays(21),
                     finishedDate = today.minusDays(3),
@@ -290,8 +309,8 @@ class RoomContentRepository(
                     title = "Frieren",
                     type = ContentType.ANIME,
                     status = ContentStatus.FINISHED,
-                    rating = 5,
-                    genre = "Fantasia",
+                    rating = 10,
+                    genre = "Fantasia, Aventura",
                     notes = "Anime terminado.",
                     startDate = today.minusDays(30),
                     finishedDate = today.minusDays(5),
@@ -313,6 +332,7 @@ fun TrackedContentEntity.toDomain(): TrackedContent {
         status = status,
         rating = rating,
         genre = genre,
+        coverUrl = coverUrl,
         notes = notes,
         startDate = startDate,
         finishedDate = finishedDate,
@@ -331,6 +351,7 @@ fun TrackedContent.toEntity(): TrackedContentEntity {
         status = status,
         rating = rating,
         genre = genre,
+        coverUrl = coverUrl,
         notes = notes,
         startDate = startDate,
         finishedDate = finishedDate,

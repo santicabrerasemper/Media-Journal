@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,10 +56,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import java.time.Month
 import java.time.format.TextStyle
 import java.util.Locale
@@ -76,7 +80,20 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Media Journal") }
+                title = {
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "Media Journal",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Series, pelis y libros en un solo lugar",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             )
         },
         floatingActionButton = {
@@ -101,6 +118,15 @@ fun HomeScreen(
         ) {
             item {
                 HomeSummaryHeader(summary = state.summary)
+            }
+            if (state.inProgressContents.isNotEmpty()) {
+                item {
+                    CurrentSection(
+                        contents = state.inProgressContents,
+                        onOpen = onOpen,
+                        onMarkFinished = onMarkFinished
+                    )
+                }
             }
             item {
                 OutlinedTextField(
@@ -143,6 +169,62 @@ fun HomeScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun CurrentSection(
+    contents: List<TrackedContent>,
+    onOpen: (Long) -> Unit,
+    onMarkFinished: (TrackedContent) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "Ahora en progreso",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            contents.forEach { content ->
+                CurrentContentCard(
+                    content = content,
+                    onClick = { onOpen(content.id) },
+                    onMarkFinished = { onMarkFinished(content) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CurrentContentCard(content: TrackedContent, onClick: () -> Unit, onMarkFinished: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .width(220.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = typeColor(content.type).copy(alpha = 0.16f))
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (!content.coverUrl.isNullOrBlank()) {
+                CoverArt(content = content, modifier = Modifier.size(width = 54.dp, height = 72.dp))
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(content.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(content.type.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                RatingStars(content.rating, compact = true)
+            }
+            FinishIconButton(onClick = onMarkFinished)
         }
     }
 }
@@ -234,7 +316,9 @@ fun ContentCard(content: TrackedContent, onClick: () -> Unit, onMarkFinished: ()
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TypeBadge(content.type)
+                if (!content.coverUrl.isNullOrBlank()) {
+                    CoverArt(content = content, modifier = Modifier.size(width = 54.dp, height = 72.dp))
+                }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         text = content.title,
@@ -260,12 +344,43 @@ fun ContentCard(content: TrackedContent, onClick: () -> Unit, onMarkFinished: ()
             ) {
                 StatusPill(content.status)
                 if (content.status != ContentStatus.FINISHED) {
-                    TextButton(onClick = onMarkFinished) {
-                        Text("Terminar")
-                    }
+                    FinishIconButton(onClick = onMarkFinished)
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CoverArt(content: TrackedContent, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(typeColor(content.type).copy(alpha = 0.22f), RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = content.coverUrl,
+            contentDescription = "Portada de ${content.title}",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+    }
+}
+
+@Composable
+fun FinishIconButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .background(Color(0xFFE4F4ED), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "\u2713",
+            color = Color(0xFF24675B),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -297,22 +412,26 @@ fun TypeBadge(type: ContentType) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = when (type) {
-                ContentType.SERIES -> "S"
-                ContentType.ANIME -> "A"
-                ContentType.MOVIE -> "P"
-                ContentType.BOOK -> "L"
-            },
+            text = typeIcon(type),
             color = textColor,
             fontWeight = FontWeight.Bold
         )
     }
 }
 
+fun typeIcon(type: ContentType): String {
+    return when (type) {
+        ContentType.SERIES -> "TV"
+        ContentType.ANIME -> "*"
+        ContentType.MOVIE -> "\u25B6"
+        ContentType.BOOK -> "\u25A4"
+    }
+}
+
 @Composable
 fun RatingText(rating: Int?) {
     Text(
-        text = rating?.let { "$it/5" } ?: "-",
+        text = rating?.let { "$it/10" } ?: "-",
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold
     )
@@ -353,6 +472,7 @@ fun EditContentScreen(
     onStatusChanged: (ContentStatus) -> Unit,
     onRatingChanged: (Int?) -> Unit,
     onGenreChanged: (String) -> Unit,
+    onCoverUrlChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit
@@ -402,10 +522,20 @@ fun EditContentScreen(
                 RatingSelector(state.rating, onRatingChanged)
             }
             item {
-                GenreDropdown(
+                GenreSelector(
                     type = state.type,
-                    selectedGenre = state.genre,
+                    selectedGenres = state.genre,
                     onGenreChanged = onGenreChanged
+                )
+            }
+            item {
+                OutlinedTextField(
+                    value = state.coverUrl,
+                    onValueChange = onCoverUrlChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("URL de portada") },
+                    placeholder = { Text("https://...") }
                 )
             }
             item {
@@ -428,45 +558,43 @@ fun EditContentScreen(
 }
 
 @Composable
-fun GenreDropdown(
+fun GenreSelector(
     type: ContentType,
-    selectedGenre: String,
+    selectedGenres: String,
     onGenreChanged: (String) -> Unit
 ) {
-    var expanded by remember(type) { mutableStateOf(false) }
     val genres = genresFor(type)
+    val selected = selectedGenreList(selectedGenres)
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        OutlinedTextField(
-            value = selectedGenre,
-            onValueChange = {},
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            readOnly = true,
-            singleLine = true,
-            label = { Text("Genero") },
-            placeholder = { Text("Seleccionar genero") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+        Text("Generos", fontWeight = FontWeight.SemiBold)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             genres.forEach { genre ->
-                DropdownMenuItem(
-                    text = { Text(genre) },
-                    onClick = {
-                        onGenreChanged(genre)
-                        expanded = false
-                    }
+                val isSelected = genre in selected
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { onGenreChanged(toggleGenre(selected, genre)) },
+                    label = { Text(genre) }
                 )
             }
         }
     }
+}
+
+fun selectedGenreList(value: String): List<String> {
+    return value.split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+}
+
+fun toggleGenre(selected: List<String>, genre: String): String {
+    val next = if (genre in selected) selected - genre else selected + genre
+    return next.joinToString(", ")
 }
 
 @Composable
@@ -544,12 +672,15 @@ fun RatingSelector(rating: Int?, onSelected: (Int?) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(top = 8.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            (1..5).forEach { value ->
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            (1..10).forEach { value ->
                 Text(
                     text = if ((rating ?: 0) >= value) "\u2605" else "\u2606",
                     color = if ((rating ?: 0) >= value) Color(0xFFFFB4A2) else MaterialTheme.colorScheme.outline,
-                    fontSize = 34.sp,
+                    fontSize = 30.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { onSelected(value) }
                 )
@@ -564,12 +695,12 @@ fun RatingSelector(rating: Int?, onSelected: (Int?) -> Unit) {
 @Composable
 fun RatingStars(rating: Int?, compact: Boolean = false) {
     val value = rating ?: 0
-    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 3.dp)) {
-        (1..5).forEach { index ->
+    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 0.dp else 2.dp)) {
+        (1..10).forEach { index ->
             Text(
                 text = if (value >= index) "\u2605" else "\u2606",
                 color = if (value >= index) Color(0xFFFFB4A2) else MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
-                fontSize = if (compact) 14.sp else 22.sp,
+                fontSize = if (compact) 10.sp else 18.sp,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -586,8 +717,31 @@ fun DetailScreen(
     onDelete: () -> Unit,
     onStatusChanged: (ContentStatus) -> Unit
 ) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(state.deleted) {
         if (state.deleted) onDeleted()
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Eliminar contenido") },
+            text = { Text("Esta accion no se puede deshacer. ¿Seguro que queres eliminarlo?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    onDelete()
+                }) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -624,7 +778,7 @@ fun DetailScreen(
                 item {
                     DetailSection(title = "Datos") {
                         InfoLine("Tipo", content.type.label)
-                        InfoLine("Genero", content.genre ?: "-")
+                        InfoLine("Generos", content.genre ?: "-")
                         InfoLine("Estado", content.status.label)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Calificacion", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -652,7 +806,7 @@ fun DetailScreen(
                     }
                 }
                 item {
-                    OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { showDeleteDialog = true }, modifier = Modifier.fillMaxWidth()) {
                         Text("Eliminar")
                     }
                 }
@@ -671,7 +825,9 @@ fun DetailHeader(content: TrackedContent) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TypeBadge(content.type)
+            if (!content.coverUrl.isNullOrBlank()) {
+                CoverArt(content = content, modifier = Modifier.size(width = 86.dp, height = 118.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     content.title,
@@ -758,7 +914,7 @@ fun StatsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Estadisticas") },
+                title = { Text("Estadísticas") },
                 navigationIcon = { BackChevron(onClick = onBack) }
             )
         }
@@ -796,7 +952,7 @@ fun StatsScreen(
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     SummaryCard("Total", "${stats?.totalFinished ?: 0}", Modifier.weight(1f))
-                    SummaryCard("Promedio", stats?.averageRating?.let { "%.1f".format(it) } ?: "-", Modifier.weight(1f))
+                    SummaryCard("Promedio /10", stats?.averageRating?.let { "%.1f".format(it) } ?: "-", Modifier.weight(1f))
                 }
             }
             item {
@@ -829,7 +985,7 @@ fun HistoricalScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Historico") },
+                title = { Text("Histórico") },
                 navigationIcon = { BackChevron(onClick = onBack) }
             )
         }
@@ -852,7 +1008,7 @@ fun HistoricalScreen(
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     SummaryCard("Total", "${stats?.totalFinished ?: 0}", Modifier.weight(1f))
-                    SummaryCard("Promedio", stats?.averageRating?.let { "%.1f".format(it) } ?: "-", Modifier.weight(1f))
+                    SummaryCard("Promedio /10", stats?.averageRating?.let { "%.1f".format(it) } ?: "-", Modifier.weight(1f))
                 }
             }
             item {

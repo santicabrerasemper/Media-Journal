@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val contents: List<TrackedContent> = emptyList(),
+    val inProgressContents: List<TrackedContent> = emptyList(),
     val selectedType: ContentType? = null,
     val selectedStatus: ContentStatus? = null,
     val searchQuery: String = "",
@@ -48,9 +49,15 @@ class HomeViewModel(
             .filter { type == null || it.type == type }
             .filter { status == null || it.status == status }
             .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) }
+        val inProgress = contents
+            .filter { it.status == ContentStatus.IN_PROGRESS }
+            .filter { type == null || it.type == type }
+            .filter { status == null || status == ContentStatus.IN_PROGRESS }
+            .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) }
 
         HomeUiState(
             contents = filtered,
+            inProgressContents = inProgress,
             selectedType = type,
             selectedStatus = status,
             searchQuery = query,
@@ -143,6 +150,7 @@ data class EditUiState(
     val status: ContentStatus = ContentStatus.PENDING,
     val rating: Int? = null,
     val genre: String = "",
+    val coverUrl: String = "",
     val notes: String = "",
     val saved: Boolean = false,
     val titleError: Boolean = false
@@ -175,6 +183,7 @@ class EditContentViewModel(
                             status = content.status,
                             rating = content.rating,
                             genre = content.genre.orEmpty(),
+                            coverUrl = content.coverUrl.orEmpty(),
                             notes = content.notes.orEmpty()
                         )
                     }
@@ -192,6 +201,7 @@ class EditContentViewModel(
     fun updateStatus(value: ContentStatus) = state.update { it.copy(status = value) }
     fun updateRating(value: Int?) = state.update { it.copy(rating = value) }
     fun updateGenre(value: String) = state.update { it.copy(genre = value) }
+    fun updateCoverUrl(value: String) = state.update { it.copy(coverUrl = value) }
     fun updateNotes(value: String) = state.update { it.copy(notes = value) }
 
     fun save() {
@@ -211,6 +221,7 @@ class EditContentViewModel(
                     status = current.status,
                     rating = current.rating,
                     genre = current.genre.takeIf { it.isNotBlank() },
+                    coverUrl = current.coverUrl.takeIf { it.isNotBlank() },
                     notes = current.notes.takeIf { it.isNotBlank() },
                     startDate = today.takeIf { current.status != ContentStatus.PENDING },
                     finishedDate = today.takeIf { current.status == ContentStatus.FINISHED },
