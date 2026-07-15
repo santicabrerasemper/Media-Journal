@@ -73,6 +73,8 @@ fun HomeScreen(
     state: HomeUiState,
     onTypeSelected: (ContentType?) -> Unit,
     onStatusSelected: (ContentStatus?) -> Unit,
+    onGenreSelected: (String?) -> Unit,
+    onSortSelected: (HomeSort) -> Unit,
     onSearchChanged: (String) -> Unit,
     onAdd: () -> Unit,
     onMarkFinished: (TrackedContent) -> Unit,
@@ -151,6 +153,13 @@ fun HomeScreen(
                 )
             }
             item {
+                HomeFilterControls(
+                    state = state,
+                    onGenreSelected = onGenreSelected,
+                    onSortSelected = onSortSelected
+                )
+            }
+            item {
                 Text(
                     text = "Biblioteca",
                     style = MaterialTheme.typography.titleMedium,
@@ -169,6 +178,119 @@ fun HomeScreen(
                         onMarkFinished = { onMarkFinished(content) }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeFilterControls(
+    state: HomeUiState,
+    onGenreSelected: (String?) -> Unit,
+    onSortSelected: (HomeSort) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        GenreFilterDropdown(
+            genres = state.availableGenres,
+            selectedGenre = state.selectedGenre,
+            onGenreSelected = onGenreSelected,
+            modifier = Modifier.weight(1f)
+        )
+        SortDropdown(
+            selectedSort = state.selectedSort,
+            onSortSelected = onSortSelected,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+fun GenreFilterDropdown(
+    genres: List<String>,
+    selectedGenre: String?,
+    onGenreSelected: (String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (genres.isNotEmpty()) expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = selectedGenre ?: "Todos",
+            onValueChange = {},
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            enabled = genres.isNotEmpty(),
+            readOnly = true,
+            singleLine = true,
+            label = { Text("Género") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Todos") },
+                onClick = {
+                    onGenreSelected(null)
+                    expanded = false
+                }
+            )
+            genres.forEach { genre ->
+                DropdownMenuItem(
+                    text = { Text(genre) },
+                    onClick = {
+                        onGenreSelected(genre)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SortDropdown(
+    selectedSort: HomeSort,
+    onSortSelected: (HomeSort) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = selectedSort.label,
+            onValueChange = {},
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            readOnly = true,
+            singleLine = true,
+            label = { Text("Orden") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            HomeSort.entries.forEach { sort ->
+                DropdownMenuItem(
+                    text = { Text(sort.label) },
+                    onClick = {
+                        onSortSelected(sort)
+                        expanded = false
+                    }
+                )
             }
         }
     }

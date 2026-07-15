@@ -78,8 +78,6 @@ fun EditContentScreen(
     onStatusChanged: (ContentStatus) -> Unit,
     onRatingChanged: (Int?) -> Unit,
     onGenreChanged: (String) -> Unit,
-    onCoverUrlChanged: (String) -> Unit,
-    onSearchCover: () -> Unit,
     onCoverSelected: (CoverSearchResult) -> Unit,
     onNotesChanged: (String) -> Unit,
     onSave: () -> Unit,
@@ -139,8 +137,6 @@ fun EditContentScreen(
             item {
                 CoverPicker(
                     state = state,
-                    onCoverUrlChanged = onCoverUrlChanged,
-                    onSearchCover = onSearchCover,
                     onCoverSelected = onCoverSelected
                 )
             }
@@ -170,8 +166,6 @@ fun EditContentScreen(
 @Composable
 fun CoverPicker(
     state: EditUiState,
-    onCoverUrlChanged: (String) -> Unit,
-    onSearchCover: () -> Unit,
     onCoverSelected: (CoverSearchResult) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -187,27 +181,19 @@ fun CoverPicker(
                 contentScale = ContentScale.Crop
             )
         }
-        OutlinedTextField(
-            value = state.coverUrl,
-            onValueChange = onCoverUrlChanged,
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("URL de portada") },
-            placeholder = { Text("https://...") }
-        )
-        OutlinedButton(
-            onClick = onSearchCover,
-            enabled = !state.isSearchingCover,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(if (state.isSearchingCover) "Buscando..." else "Buscar portada automaticamente")
+        if (state.isSearchingCover) {
+            Text(
+                text = "Buscando portada...",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         state.coverSearchError?.let { error ->
             Text(error, color = MaterialTheme.colorScheme.error)
         }
         if (state.coverResults.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Elegir portada", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text("Encontré varias portadas", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                 state.coverResults.forEach { result ->
                     CoverResultRow(result = result, onClick = { onCoverSelected(result) })
                 }

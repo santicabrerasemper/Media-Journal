@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import java.time.LocalDate
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,11 +22,21 @@ import kotlinx.coroutines.launch
 data class HomeUiState(
     val contents: List<TrackedContent> = emptyList(),
     val inProgressContents: List<TrackedContent> = emptyList(),
+    val availableGenres: List<String> = emptyList(),
     val selectedType: ContentType? = null,
     val selectedStatus: ContentStatus? = null,
+    val selectedGenre: String? = null,
+    val selectedSort: HomeSort = HomeSort.RECENT,
     val searchQuery: String = "",
     val summary: HomeSummary = HomeSummary()
 )
+
+enum class HomeSort(val label: String) {
+    RECENT("Recientes"),
+    BEST_RATED("Mejor calificados"),
+    PENDING_FIRST("Pendientes primero"),
+    FINISHED_FIRST("Terminados primero")
+}
 
 data class HomeSummary(
     val inProgress: Int = 0,
@@ -32,35 +44,70 @@ data class HomeSummary(
     val pending: Int = 0
 )
 
+private data class HomeFilters(
+    val type: ContentType?,
+    val status: ContentStatus?,
+    val genre: String?,
+    val sort: HomeSort
+)
+
 class HomeViewModel(
     private val repository: ContentRepository
 ) : ViewModel() {
     private val selectedType = MutableStateFlow<ContentType?>(null)
     private val selectedStatus = MutableStateFlow<ContentStatus?>(null)
+    private val selectedGenre = MutableStateFlow<String?>(null)
+    private val selectedSort = MutableStateFlow(HomeSort.RECENT)
     private val searchQuery = MutableStateFlow("")
+    private val filters = combine(
+        selectedType,
+        selectedStatus,
+        selectedGenre,
+        selectedSort
+    ) { type, status, genre, sort ->
+        HomeFilters(type = type, status = status, genre = genre, sort = sort)
+    }
 
     val uiState: StateFlow<HomeUiState> = combine(
         repository.observeContents(),
-        selectedType,
-        selectedStatus,
+        filters,
         searchQuery
-    ) { contents, type, status, query ->
+    ) { contents, filters, query ->
+        val type = filters.type
+        val status = filters.status
+        val genre = filters.genre
+        val sort = filters.sort
         val today = LocalDate.now()
+        val availableGenres = contents
+            .filter { type == null || it.type == type }
+            .flatMap { it.genre.orEmpty().split(",") }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+        val effectiveGenre = genre.takeIf { it in availableGenres }
         val filtered = contents
             .filter { type == null || it.type == type }
             .filter { status == null || it.status == status }
-            .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) }
+            .filter { effectiveGenre == null || hasGenre(it, effectiveGenre) }
+            .filter { query.isBlank() || matchesSearch(it, query) }
+            .sortedWith(sort.comparator())
         val inProgress = contents
             .filter { it.status == ContentStatus.IN_PROGRESS }
             .filter { type == null || it.type == type }
             .filter { status == null || status == ContentStatus.IN_PROGRESS }
-            .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) }
+            .filter { effectiveGenre == null || hasGenre(it, effectiveGenre) }
+            .filter { query.isBlank() || matchesSearch(it, query) }
+            .sortedWith(HomeSort.RECENT.comparator())
 
         HomeUiState(
             contents = filtered,
             inProgressContents = inProgress,
+            availableGenres = availableGenres,
             selectedType = type,
             selectedStatus = status,
+            selectedGenre = effectiveGenre,
+            selectedSort = sort,
             searchQuery = query,
             summary = HomeSummary(
                 inProgress = contents.count { it.status == ContentStatus.IN_PROGRESS },
@@ -84,6 +131,14 @@ class HomeViewModel(
         selectedStatus.value = status
     }
 
+    fun setGenre(genre: String?) {
+        selectedGenre.value = genre
+    }
+
+    fun setSort(sort: HomeSort) {
+        selectedSort.value = sort
+    }
+
     fun setSearchQuery(query: String) {
         searchQuery.value = query
     }
@@ -99,6 +154,32 @@ class HomeViewModel(
                 )
             )
         }
+    }
+}
+
+private fun hasGenre(content: TrackedContent, genre: String): Boolean {
+    return content.genre.orEmpty()
+        .split(",")
+        .map { it.trim() }
+        .any { it.equals(genre, ignoreCase = true) }
+}
+
+private fun matchesSearch(content: TrackedContent, query: String): Boolean {
+    return content.title.contains(query, ignoreCase = true) ||
+        content.genre.orEmpty().contains(query, ignoreCase = true) ||
+        content.notes.orEmpty().contains(query, ignoreCase = true) ||
+        content.type.label.contains(query, ignoreCase = true)
+}
+
+private fun HomeSort.comparator(): Comparator<TrackedContent> {
+    return when (this) {
+        HomeSort.RECENT -> compareByDescending<TrackedContent> { it.updatedAt }
+        HomeSort.BEST_RATED -> compareByDescending<TrackedContent> { it.rating ?: -1 }
+            .thenByDescending { it.updatedAt }
+        HomeSort.PENDING_FIRST -> compareBy<TrackedContent> { if (it.status == ContentStatus.PENDING) 0 else 1 }
+            .thenByDescending { it.updatedAt }
+        HomeSort.FINISHED_FIRST -> compareBy<TrackedContent> { if (it.status == ContentStatus.FINISHED) 0 else 1 }
+            .thenByDescending { it.updatedAt }
     }
 }
 
@@ -167,6 +248,8 @@ class EditContentViewModel(
     initialType: ContentType? = null,
     private val coverSearchRepository: CoverSearchRepository = CoverSearchRepository()
 ) : ViewModel() {
+    private var coverSearchJob: Job? = null
+    private var automaticallySelectedCoverUrl: String? = null
     private val state = MutableStateFlow(
         EditUiState(
             type = initialType ?: ContentType.SERIES,
@@ -190,60 +273,100 @@ class EditContentViewModel(
                     coverUrl = content.coverUrl.orEmpty(),
                     notes = content.notes.orEmpty()
                 )
+                scheduleCoverSuggestions()
             }
         }
     }
 
-    fun updateTitle(value: String) = state.update { it.copy(title = value, titleError = false) }
-    fun updateType(value: ContentType) = state.update {
-        it.copy(
-            type = value,
-            genre = ""
-        )
+    fun updateTitle(value: String) {
+        coverSearchJob?.cancel()
+        val previousTitle = state.value.title
+        val titleChanged = value != previousTitle
+        state.update {
+            if (titleChanged) automaticallySelectedCoverUrl = null
+            it.copy(
+                title = value,
+                titleError = false,
+                coverUrl = if (titleChanged) "" else it.coverUrl,
+                coverResults = emptyList(),
+                coverSearchError = null,
+                isSearchingCover = false
+            )
+        }
+        scheduleCoverSuggestions()
+    }
+    fun updateType(value: ContentType) {
+        automaticallySelectedCoverUrl = null
+        state.update {
+            it.copy(
+                type = value,
+                genre = "",
+                coverUrl = "",
+                coverResults = emptyList(),
+                coverSearchError = null
+            )
+        }
+        scheduleCoverSuggestions()
     }
     fun updateStatus(value: ContentStatus) = state.update { it.copy(status = value) }
     fun updateRating(value: Int?) = state.update { it.copy(rating = value) }
     fun updateGenre(value: String) = state.update { it.copy(genre = value) }
-    fun updateCoverUrl(value: String) = state.update { it.copy(coverUrl = value, coverSearchError = null) }
+    fun updateCoverUrl(value: String) {
+        coverSearchJob?.cancel()
+        automaticallySelectedCoverUrl = null
+        state.update { it.copy(coverUrl = value, coverSearchError = null, coverResults = if (value.isBlank()) it.coverResults else emptyList()) }
+    }
     fun updateNotes(value: String) = state.update { it.copy(notes = value) }
 
-    fun searchCover() {
+    private fun scheduleCoverSuggestions() {
+        coverSearchJob?.cancel()
         val current = state.value
-        if (current.title.isBlank()) {
-            state.update { it.copy(titleError = true, coverSearchError = "Escribi un titulo para buscar portada") }
-            return
-        }
-        if ((current.type == ContentType.MOVIE || current.type == ContentType.SERIES) && coverSearchRepository.tmdbApiKey.isBlank()) {
-            state.update {
-                it.copy(coverSearchError = "No pude conectar con el buscador de peliculas y series.")
+        if (current.coverUrl.isNotBlank() || current.title.trim().length < 3) return
+        coverSearchJob = viewModelScope.launch {
+            delay(1_000)
+            val latest = state.value
+            if (latest.coverUrl.isBlank() && latest.title.trim().length >= 3) {
+                state.update { it.copy(isSearchingCover = true, coverSearchError = null, coverResults = emptyList()) }
+                runCoverSearch(
+                    query = latest.title.trim(),
+                    type = latest.type,
+                    showEmptyError = false
+                )
             }
-            return
         }
+    }
 
-        viewModelScope.launch {
-            state.update { it.copy(isSearchingCover = true, coverSearchError = null, coverResults = emptyList()) }
-            runCatching {
-                coverSearchRepository.search(current.title, current.type)
-            }.onSuccess { results ->
-                state.update {
-                    it.copy(
-                        isSearchingCover = false,
-                        coverResults = results,
-                        coverSearchError = if (results.isEmpty()) "No encontre portadas para ese titulo" else null
-                    )
-                }
-            }.onFailure {
-                state.update {
-                    it.copy(
-                        isSearchingCover = false,
-                        coverSearchError = "No pude buscar portadas. Revisa tu conexion."
-                    )
-                }
+    private suspend fun runCoverSearch(query: String, type: ContentType, showEmptyError: Boolean) {
+        runCatching {
+            coverSearchRepository.searchBroad(query, type)
+        }.onSuccess { results ->
+            val latest = state.value
+            if (!latest.title.trim().equals(query, ignoreCase = true) || latest.type != type || latest.coverUrl.isNotBlank()) {
+                state.update { it.copy(isSearchingCover = false) }
+                return@onSuccess
+            }
+            val singleResult = results.singleOrNull()
+            automaticallySelectedCoverUrl = singleResult?.imageUrl
+            state.update {
+                it.copy(
+                    isSearchingCover = false,
+                    coverUrl = singleResult?.imageUrl.orEmpty(),
+                    coverResults = if (singleResult == null) results else emptyList(),
+                    coverSearchError = if (showEmptyError && results.isEmpty()) "No encontre portadas para ese titulo" else null
+                )
+            }
+        }.onFailure {
+            state.update {
+                it.copy(
+                    isSearchingCover = false,
+                    coverSearchError = if (showEmptyError) "No pude buscar portadas. Revisa tu conexion." else null
+                )
             }
         }
     }
 
     fun selectCover(result: CoverSearchResult) {
+        automaticallySelectedCoverUrl = null
         state.update {
             it.copy(
                 coverUrl = result.imageUrl,

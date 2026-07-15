@@ -38,6 +38,42 @@ class CoverSearchRepository(context: Context? = null) {
         }
     }
 
+    suspend fun searchBroad(title: String, preferredType: ContentType): List<CoverSearchResult> = withContext(Dispatchers.IO) {
+        val query = title.trim()
+        if (query.isBlank()) return@withContext emptyList()
+
+        val preferredResults = searchByTypeSafely(query, preferredType)
+        if (preferredResults.isNotEmpty()) return@withContext preferredResults.withTypeLabel(preferredType)
+
+        ContentType.entries
+            .filterNot { it == preferredType }
+            .asSequence()
+            .map { type -> searchByTypeSafely(query, type).withTypeLabel(type) }
+            .firstOrNull { it.isNotEmpty() }
+            .orEmpty()
+    }
+
+    private fun searchByTypeSafely(query: String, type: ContentType): List<CoverSearchResult> {
+        return runCatching {
+            when (type) {
+                ContentType.BOOK -> searchBooks(query)
+                ContentType.MOVIE -> searchMovies(query)
+                ContentType.SERIES -> searchSeries(query)
+                ContentType.ANIME -> searchAnime(query)
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun List<CoverSearchResult>.withTypeLabel(type: ContentType): List<CoverSearchResult> {
+        return map { result ->
+            result.copy(
+                subtitle = listOf(type.label, result.subtitle)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" - ")
+            )
+        }
+    }
+
     private fun searchBooks(query: String): List<CoverSearchResult> {
         val json = getJsonObject("https://openlibrary.org/search.json?title=${query.encode()}&limit=8")
         val docs = json.optJSONArray("docs") ?: return emptyList()

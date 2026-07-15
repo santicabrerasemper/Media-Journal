@@ -109,12 +109,7 @@ fun StatsScreen(
                 }
             }
             item {
-                PieChart(
-                    items = stats?.items.orEmpty(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(190.dp)
-                )
+                ChartSection(items = stats?.items.orEmpty())
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -166,12 +161,7 @@ fun HistoricalScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                PieChart(
-                    items = stats?.items.orEmpty(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(190.dp)
-                )
+                ChartSection(items = stats?.items.orEmpty())
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -192,6 +182,23 @@ fun HistoricalScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun ChartSection(items: List<PieChartItem>) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        PieChart(
+            items = items,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(190.dp)
+        )
     }
 }
 
