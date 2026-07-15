@@ -1,9 +1,14 @@
-package com.example.mediajournal
+﻿package com.example.mediajournal
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -29,11 +34,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repository = RepositoryProvider.get(this)
+        val coverSearchRepository = CoverSearchRepository(this)
 
         setContent {
             MediaJournalTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    MediaJournalApp(repository)
+                    MediaJournalApp(repository, coverSearchRepository)
                 }
             }
         }
@@ -41,7 +47,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MediaJournalApp(repository: ContentRepository) {
+fun MediaJournalApp(repository: ContentRepository, coverSearchRepository: CoverSearchRepository) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route.orEmpty()
@@ -64,19 +70,19 @@ fun MediaJournalApp(repository: ContentRepository) {
                                 popUpTo(Routes.Home) { inclusive = true }
                             }
                         },
-                        icon = { Text("I") },
+                        icon = { Icon(Icons.Rounded.Home, contentDescription = "Inicio") },
                         label = { Text("Inicio") }
                     )
                     NavigationBarItem(
                         selected = currentRoute == Routes.Stats,
                         onClick = { navController.navigate(Routes.Stats) },
-                        icon = { Text("G") },
+                        icon = { Icon(Icons.Rounded.BarChart, contentDescription = "Estadísticas") },
                         label = { Text("Estadísticas") }
                     )
                     NavigationBarItem(
                         selected = currentRoute == Routes.History,
                         onClick = { navController.navigate(Routes.History) },
-                        icon = { Text("H") },
+                        icon = { Icon(Icons.Rounded.History, contentDescription = "Histórico") },
                         label = { Text("Histórico") }
                     )
                 }
@@ -117,7 +123,7 @@ fun MediaJournalApp(repository: ContentRepository) {
                 val vm: EditContentViewModel = viewModel(
                     key = "add-${initialType?.name ?: "any"}",
                     factory = RepositoryViewModelFactory {
-                        EditContentViewModel(repository, null, initialType)
+                        EditContentViewModel(repository, null, initialType, coverSearchRepository)
                     }
                 )
                 val state by vm.uiState.collectAsStateWithLifecycle()
@@ -129,6 +135,8 @@ fun MediaJournalApp(repository: ContentRepository) {
                     onRatingChanged = vm::updateRating,
                     onGenreChanged = vm::updateGenre,
                     onCoverUrlChanged = vm::updateCoverUrl,
+                    onSearchCover = vm::searchCover,
+                    onCoverSelected = vm::selectCover,
                     onNotesChanged = vm::updateNotes,
                     onSave = vm::save,
                     onBack = { navController.popBackStack() }
@@ -141,7 +149,7 @@ fun MediaJournalApp(repository: ContentRepository) {
                 val id = entry.arguments?.getLong("contentId") ?: 0L
                 val vm: EditContentViewModel = viewModel(
                     key = "edit-$id",
-                    factory = RepositoryViewModelFactory { EditContentViewModel(repository, id) }
+                    factory = RepositoryViewModelFactory { EditContentViewModel(repository, id, coverSearchRepository = coverSearchRepository) }
                 )
                 val state by vm.uiState.collectAsStateWithLifecycle()
                 EditContentScreen(
@@ -152,6 +160,8 @@ fun MediaJournalApp(repository: ContentRepository) {
                     onRatingChanged = vm::updateRating,
                     onGenreChanged = vm::updateGenre,
                     onCoverUrlChanged = vm::updateCoverUrl,
+                    onSearchCover = vm::searchCover,
+                    onCoverSelected = vm::selectCover,
                     onNotesChanged = vm::updateNotes,
                     onSave = vm::save,
                     onBack = { navController.popBackStack() }
@@ -249,3 +259,4 @@ fun MediaJournalTheme(content: @Composable () -> Unit) {
         content = content
     )
 }
+

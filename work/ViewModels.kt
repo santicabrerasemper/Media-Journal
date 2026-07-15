@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -151,7 +152,11 @@ data class EditUiState(
     val rating: Int? = null,
     val genre: String = "",
     val coverUrl: String = "",
+    val coverResults: List<CoverSearchResult> = emptyList(),
+    val isSearchingCover: Boolean = false,
+    val coverSearchError: String? = null,
     val notes: String = "",
+    val isSaving: Boolean = false,
     val saved: Boolean = false,
     val titleError: Boolean = false
 )
@@ -159,7 +164,8 @@ data class EditUiState(
 class EditContentViewModel(
     private val repository: ContentRepository,
     private val contentId: Long?,
-    initialType: ContentType? = null
+    initialType: ContentType? = null,
+    private val coverSearchRepository: CoverSearchRepository = CoverSearchRepository()
 ) : ViewModel() {
     private val state = MutableStateFlow(
         EditUiState(
@@ -172,21 +178,18 @@ class EditContentViewModel(
     init {
         if (contentId != null) {
             viewModelScope.launch {
-                repository.observeContent(contentId)
-                    .filterNotNull()
-                    .collect { content ->
-                        state.value = EditUiState(
-                            id = content.id,
-                            title = content.title,
-                            type = content.type,
-                            isTypeLocked = false,
-                            status = content.status,
-                            rating = content.rating,
-                            genre = content.genre.orEmpty(),
-                            coverUrl = content.coverUrl.orEmpty(),
-                            notes = content.notes.orEmpty()
-                        )
-                    }
+                val content = repository.observeContent(contentId).filterNotNull().first()
+                state.value = EditUiState(
+                    id = content.id,
+                    title = content.title,
+                    type = content.type,
+                    isTypeLocked = false,
+                    status = content.status,
+                    rating = content.rating,
+                    genre = content.genre.orEmpty(),
+                    coverUrl = content.coverUrl.orEmpty(),
+                    notes = content.notes.orEmpty()
+                )
             }
         }
     }
@@ -201,18 +204,68 @@ class EditContentViewModel(
     fun updateStatus(value: ContentStatus) = state.update { it.copy(status = value) }
     fun updateRating(value: Int?) = state.update { it.copy(rating = value) }
     fun updateGenre(value: String) = state.update { it.copy(genre = value) }
-    fun updateCoverUrl(value: String) = state.update { it.copy(coverUrl = value) }
+    fun updateCoverUrl(value: String) = state.update { it.copy(coverUrl = value, coverSearchError = null) }
     fun updateNotes(value: String) = state.update { it.copy(notes = value) }
+
+    fun searchCover() {
+        val current = state.value
+        if (current.title.isBlank()) {
+            state.update { it.copy(titleError = true, coverSearchError = "Escribi un titulo para buscar portada") }
+            return
+        }
+        if ((current.type == ContentType.MOVIE || current.type == ContentType.SERIES) && coverSearchRepository.tmdbApiKey.isBlank()) {
+            state.update {
+                it.copy(coverSearchError = "No pude conectar con el buscador de peliculas y series.")
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            state.update { it.copy(isSearchingCover = true, coverSearchError = null, coverResults = emptyList()) }
+            runCatching {
+                coverSearchRepository.search(current.title, current.type)
+            }.onSuccess { results ->
+                state.update {
+                    it.copy(
+                        isSearchingCover = false,
+                        coverResults = results,
+                        coverSearchError = if (results.isEmpty()) "No encontre portadas para ese titulo" else null
+                    )
+                }
+            }.onFailure {
+                state.update {
+                    it.copy(
+                        isSearchingCover = false,
+                        coverSearchError = "No pude buscar portadas. Revisa tu conexion."
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectCover(result: CoverSearchResult) {
+        state.update {
+            it.copy(
+                coverUrl = result.imageUrl,
+                coverResults = emptyList(),
+                coverSearchError = null
+            )
+        }
+    }
 
     fun save() {
         val current = state.value
+        if (current.isSaving) return
         if (current.title.isBlank()) {
             state.update { it.copy(titleError = true) }
             return
         }
 
         viewModelScope.launch {
+            state.update { it.copy(isSaving = true) }
             val today = LocalDate.now()
+            val existing = current.id.takeIf { it != 0L }
+                ?.let { repository.observeContent(it).first() }
             repository.save(
                 TrackedContent(
                     id = current.id,
@@ -223,13 +276,14 @@ class EditContentViewModel(
                     genre = current.genre.takeIf { it.isNotBlank() },
                     coverUrl = current.coverUrl.takeIf { it.isNotBlank() },
                     notes = current.notes.takeIf { it.isNotBlank() },
-                    startDate = today.takeIf { current.status != ContentStatus.PENDING },
+                    startDate = existing?.startDate ?: today.takeIf { current.status != ContentStatus.PENDING },
                     finishedDate = today.takeIf { current.status == ContentStatus.FINISHED },
                     currentProgress = null,
-                    totalProgress = null
+                    totalProgress = null,
+                    createdAt = existing?.createdAt ?: java.time.LocalDateTime.now()
                 )
             )
-            state.update { it.copy(saved = true) }
+            state.update { it.copy(isSaving = false, saved = true) }
         }
     }
 }
