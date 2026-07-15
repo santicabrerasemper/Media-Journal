@@ -178,7 +178,7 @@ fun EmptyState() {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text("No hay contenido para estos filtros", style = MaterialTheme.typography.titleMedium)
-        Text("Agrega una serie, pelicula o libro para empezar.")
+        Text("Agregá una serie, película, anime o libro para empezar.")
     }
 }
 

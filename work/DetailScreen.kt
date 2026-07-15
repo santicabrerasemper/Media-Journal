@@ -138,10 +138,10 @@ fun DetailScreen(
                 item {
                     DetailSection(title = "Datos") {
                         InfoLine("Tipo", content.type.label)
-                        InfoLine("Generos", content.genre ?: "-")
+                        InfoLine("Géneros", content.genre ?: "-")
                         InfoLine("Estado", content.status.label)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Calificacion", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Calificación", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (content.rating == null) {
                                 Text("Sin calificar", fontWeight = FontWeight.SemiBold)
                             } else {

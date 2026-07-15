@@ -108,6 +108,8 @@ fun MediaJournalApp(repository: ContentRepository, coverSearchRepository: CoverS
                     onSearchChanged = vm::setSearchQuery,
                     onAdd = { navController.navigate(Routes.add(state.selectedType)) },
                     onMarkFinished = vm::markFinished,
+                    onStatusChanged = vm::updateStatus,
+                    onRatingChanged = vm::updateRating,
                     onOpen = { id -> navController.navigate(Routes.detail(id)) }
                 )
             }
@@ -137,8 +139,11 @@ fun MediaJournalApp(repository: ContentRepository, coverSearchRepository: CoverS
                     onRatingChanged = vm::updateRating,
                     onGenreChanged = vm::updateGenre,
                     onCoverSelected = vm::selectCover,
+                    onChooseAnotherCover = vm::chooseAnotherCover,
                     onNotesChanged = vm::updateNotes,
                     onSave = vm::save,
+                    onConfirmDuplicateSave = vm::confirmDuplicateSave,
+                    onDismissDuplicateWarning = vm::dismissDuplicateWarning,
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -160,8 +165,11 @@ fun MediaJournalApp(repository: ContentRepository, coverSearchRepository: CoverS
                     onRatingChanged = vm::updateRating,
                     onGenreChanged = vm::updateGenre,
                     onCoverSelected = vm::selectCover,
+                    onChooseAnotherCover = vm::chooseAnotherCover,
                     onNotesChanged = vm::updateNotes,
                     onSave = vm::save,
+                    onConfirmDuplicateSave = vm::confirmDuplicateSave,
+                    onDismissDuplicateWarning = vm::dismissDuplicateWarning,
                     onBack = { navController.popBackStack() }
                 )
             }

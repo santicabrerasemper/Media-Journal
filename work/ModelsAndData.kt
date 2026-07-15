@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.map
 enum class ContentType(val label: String) {
     SERIES("Series"),
     ANIME("Anime"),
-    MOVIE("Peliculas"),
+    MOVIE("Películas"),
     BOOK("Libros")
 }
 

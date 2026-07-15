@@ -155,6 +155,25 @@ class HomeViewModel(
             )
         }
     }
+
+    fun updateStatus(content: TrackedContent, status: ContentStatus) {
+        val today = LocalDate.now()
+        viewModelScope.launch {
+            repository.save(
+                content.copy(
+                    status = status,
+                    startDate = content.startDate ?: today.takeIf { status != ContentStatus.PENDING },
+                    finishedDate = today.takeIf { status == ContentStatus.FINISHED }
+                )
+            )
+        }
+    }
+
+    fun updateRating(content: TrackedContent, rating: Int?) {
+        viewModelScope.launch {
+            repository.save(content.copy(rating = rating))
+        }
+    }
 }
 
 private fun hasGenre(content: TrackedContent, genre: String): Boolean {
@@ -239,7 +258,8 @@ data class EditUiState(
     val notes: String = "",
     val isSaving: Boolean = false,
     val saved: Boolean = false,
-    val titleError: Boolean = false
+    val titleError: Boolean = false,
+    val duplicateCandidates: List<TrackedContent> = emptyList()
 )
 
 class EditContentViewModel(
@@ -352,14 +372,14 @@ class EditContentViewModel(
                     isSearchingCover = false,
                     coverUrl = singleResult?.imageUrl.orEmpty(),
                     coverResults = if (singleResult == null) results else emptyList(),
-                    coverSearchError = if (showEmptyError && results.isEmpty()) "No encontre portadas para ese titulo" else null
+                    coverSearchError = if (showEmptyError && results.isEmpty()) "No encontré portadas para ese título" else null
                 )
             }
         }.onFailure {
             state.update {
                 it.copy(
                     isSearchingCover = false,
-                    coverSearchError = if (showEmptyError) "No pude buscar portadas. Revisa tu conexion." else null
+                    coverSearchError = if (showEmptyError) "No pude buscar portadas. Revisá tu conexión." else null
                 )
             }
         }
@@ -376,6 +396,53 @@ class EditContentViewModel(
         }
     }
 
+    fun chooseAnotherCover() {
+        coverSearchJob?.cancel()
+        automaticallySelectedCoverUrl = null
+        val current = state.value
+        if (current.title.trim().length < 3) {
+            state.update { it.copy(coverUrl = "", coverResults = emptyList()) }
+            return
+        }
+        viewModelScope.launch {
+            state.update { it.copy(coverUrl = "", isSearchingCover = true, coverSearchError = null, coverResults = emptyList()) }
+            runCatching {
+                coverSearchRepository.searchBroad(current.title.trim(), current.type)
+            }.onSuccess { results ->
+                val latest = state.value
+                if (!latest.title.trim().equals(current.title.trim(), ignoreCase = true) || latest.type != current.type) {
+                    state.update { it.copy(isSearchingCover = false) }
+                    return@onSuccess
+                }
+                state.update {
+                    it.copy(
+                        isSearchingCover = false,
+                        coverResults = results,
+                        coverSearchError = if (results.isEmpty()) "No encontré portadas para ese título" else null
+                    )
+                }
+            }.onFailure {
+                state.update {
+                    it.copy(
+                        isSearchingCover = false,
+                        coverSearchError = "No pude buscar portadas. Revisá tu conexión."
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissDuplicateWarning() {
+        state.update { it.copy(duplicateCandidates = emptyList()) }
+    }
+
+    fun confirmDuplicateSave() {
+        val current = state.value.copy(duplicateCandidates = emptyList())
+        viewModelScope.launch {
+            saveContent(current)
+        }
+    }
+
     fun save() {
         val current = state.value
         if (current.isSaving) return
@@ -385,30 +452,69 @@ class EditContentViewModel(
         }
 
         viewModelScope.launch {
-            state.update { it.copy(isSaving = true) }
-            val today = LocalDate.now()
-            val existing = current.id.takeIf { it != 0L }
-                ?.let { repository.observeContent(it).first() }
-            repository.save(
-                TrackedContent(
-                    id = current.id,
-                    title = current.title.trim(),
-                    type = current.type,
-                    status = current.status,
-                    rating = current.rating,
-                    genre = current.genre.takeIf { it.isNotBlank() },
-                    coverUrl = current.coverUrl.takeIf { it.isNotBlank() },
-                    notes = current.notes.takeIf { it.isNotBlank() },
-                    startDate = existing?.startDate ?: today.takeIf { current.status != ContentStatus.PENDING },
-                    finishedDate = today.takeIf { current.status == ContentStatus.FINISHED },
-                    currentProgress = null,
-                    totalProgress = null,
-                    createdAt = existing?.createdAt ?: java.time.LocalDateTime.now()
-                )
-            )
-            state.update { it.copy(isSaving = false, saved = true) }
+            val duplicates = findDuplicates(current)
+            if (duplicates.isNotEmpty()) {
+                state.update { it.copy(duplicateCandidates = duplicates) }
+                return@launch
+            }
+            saveContent(current)
         }
     }
+
+    private suspend fun findDuplicates(current: EditUiState): List<TrackedContent> {
+        val normalizedTitle = current.title.normalizedForMatch()
+        if (normalizedTitle.length < 4) return emptyList()
+        return repository.observeContents().first()
+            .filter { it.id != current.id }
+            .filter { it.type == current.type }
+            .filter { existing ->
+                val existingTitle = existing.title.normalizedForMatch()
+                existingTitle == normalizedTitle ||
+                    existingTitle.contains(normalizedTitle) ||
+                    normalizedTitle.contains(existingTitle) ||
+                    existingTitle.wordsOverlap(normalizedTitle)
+            }
+            .take(3)
+    }
+
+    private suspend fun saveContent(current: EditUiState) {
+        state.update { it.copy(isSaving = true, duplicateCandidates = emptyList()) }
+        val today = LocalDate.now()
+        val existing = current.id.takeIf { it != 0L }
+            ?.let { repository.observeContent(it).first() }
+        repository.save(
+            TrackedContent(
+                id = current.id,
+                title = current.title.trim(),
+                type = current.type,
+                status = current.status,
+                rating = current.rating,
+                genre = current.genre.takeIf { it.isNotBlank() },
+                coverUrl = current.coverUrl.takeIf { it.isNotBlank() },
+                notes = current.notes.takeIf { it.isNotBlank() },
+                startDate = existing?.startDate ?: today.takeIf { current.status != ContentStatus.PENDING },
+                finishedDate = today.takeIf { current.status == ContentStatus.FINISHED },
+                currentProgress = null,
+                totalProgress = null,
+                createdAt = existing?.createdAt ?: java.time.LocalDateTime.now()
+            )
+        )
+        state.update { it.copy(isSaving = false, saved = true) }
+    }
+}
+
+private fun String.normalizedForMatch(): String {
+    return lowercase()
+        .replace(Regex("[^a-z0-9áéíóúüñ ]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+private fun String.wordsOverlap(other: String): Boolean {
+    val first = split(" ").filter { it.length > 3 }.toSet()
+    val second = other.split(" ").filter { it.length > 3 }.toSet()
+    if (first.isEmpty() || second.isEmpty()) return false
+    return first.intersect(second).size >= 2
 }
 
 data class StatsUiState(

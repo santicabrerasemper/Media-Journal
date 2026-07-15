@@ -112,16 +112,23 @@ fun StatsScreen(
                 ChartSection(items = stats?.items.orEmpty())
             }
             item {
+                StatsNarrative(
+                    total = stats?.totalFinished ?: 0,
+                    average = stats?.averageRating,
+                    emptyText = "Todavía no marcaste contenido como terminado este mes."
+                )
+            }
+            item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     SummaryCard("Total", "${stats?.totalFinished ?: 0}", Modifier.weight(1f))
                     SummaryCard("Promedio /10", stats?.averageRating?.let { "%.1f".format(it) } ?: "-", Modifier.weight(1f))
                 }
             }
             item {
-                Text("Distribuci\u00f3n", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Distribución por tipo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            items(stats?.items.orEmpty()) { item ->
-                LegendRow(item)
+            item {
+                TypeStatsGrid(items = stats?.items.orEmpty())
             }
             item {
                 Text("Terminados", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -130,7 +137,13 @@ fun StatsScreen(
                 item { Text("No hay contenido terminado en este mes.") }
             } else {
                 items(stats!!.finishedContents) { content ->
-                    ContentCard(content = content, onClick = {}, onMarkFinished = {})
+                    ContentCard(
+                        content = content,
+                        onClick = {},
+                        onMarkFinished = {},
+                        onStatusChanged = {},
+                        onRatingChanged = {}
+                    )
                 }
             }
         }
@@ -164,6 +177,13 @@ fun HistoricalScreen(
                 ChartSection(items = stats?.items.orEmpty())
             }
             item {
+                StatsNarrative(
+                    total = stats?.totalFinished ?: 0,
+                    average = stats?.averageRating,
+                    emptyText = "Tu histórico se va a completar cuando termines contenido."
+                )
+            }
+            item {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     SummaryCard("Total", "${stats?.totalFinished ?: 0}", Modifier.weight(1f))
                     SummaryCard("Promedio /10", stats?.averageRating?.let { "%.1f".format(it) } ?: "-", Modifier.weight(1f))
@@ -178,7 +198,13 @@ fun HistoricalScreen(
             stats?.bestRated?.let { content ->
                 item {
                     Text("Mejor calificado", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    ContentCard(content = content, onClick = {}, onMarkFinished = {})
+                    ContentCard(
+                        content = content,
+                        onClick = {},
+                        onMarkFinished = {},
+                        onStatusChanged = {},
+                        onRatingChanged = {}
+                    )
                 }
             }
         }
@@ -197,9 +223,20 @@ fun ChartSection(items: List<PieChartItem>) {
             items = items,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(190.dp)
+                .height(150.dp)
         )
     }
+}
+
+@Composable
+fun StatsNarrative(total: Int, average: Double?, emptyText: String) {
+    val text = if (total == 0) {
+        emptyText
+    } else {
+        val averageText = average?.let { " con promedio %.1f/10".format(it) }.orEmpty()
+        "Terminaste $total contenido${if (total == 1) "" else "s"}$averageText."
+    }
+    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -223,7 +260,7 @@ fun PieChart(items: List<PieChartItem>, modifier: Modifier = Modifier) {
         if (visible.isEmpty()) {
             Text("Sin datos para este mes")
         } else {
-            Canvas(modifier = Modifier.size(170.dp)) {
+            Canvas(modifier = Modifier.size(132.dp)) {
                 var startAngle = -90f
                 visible.forEach { item ->
                     val sweep = item.percentage * 360f
@@ -233,12 +270,37 @@ fun PieChart(items: List<PieChartItem>, modifier: Modifier = Modifier) {
                         sweepAngle = sweep,
                         useCenter = false,
                         size = Size(size.width, size.height),
-                        style = Stroke(width = 34.dp.toPx())
+                        style = Stroke(width = 26.dp.toPx())
                     )
                     startAngle += sweep
                 }
             }
             Text("${visible.sumOf { it.count }}", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun TypeStatsGrid(items: List<PieChartItem>) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items.forEach { item ->
+            Card(
+                modifier = Modifier.width(176.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = typeColor(item.type).copy(alpha = 0.16f))
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(10.dp).background(typeColor(item.type), CircleShape))
+                        Text(item.type.label, fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("${item.count}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("${(item.percentage * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }

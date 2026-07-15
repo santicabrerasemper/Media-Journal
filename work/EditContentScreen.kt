@@ -5,6 +5,7 @@
 
 package com.example.mediajournal
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -79,8 +81,11 @@ fun EditContentScreen(
     onRatingChanged: (Int?) -> Unit,
     onGenreChanged: (String) -> Unit,
     onCoverSelected: (CoverSearchResult) -> Unit,
+    onChooseAnotherCover: () -> Unit,
     onNotesChanged: (String) -> Unit,
     onSave: () -> Unit,
+    onConfirmDuplicateSave: () -> Unit,
+    onDismissDuplicateWarning: () -> Unit,
     onBack: () -> Unit
 ) {
     LaunchedEffect(state.saved) {
@@ -109,35 +114,35 @@ fun EditContentScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     isError = state.titleError,
-                    label = { Text("Titulo") },
-                    supportingText = { if (state.titleError) Text("El titulo es obligatorio") }
+                    label = { Text("Título") },
+                    supportingText = { if (state.titleError) Text("El título es obligatorio") }
                 )
             }
-            if (!state.isTypeLocked) {
-                item {
-                    Text("Tipo", fontWeight = FontWeight.SemiBold)
-                    SelectableRow(ContentType.entries, state.type, { it.label }, onTypeChanged)
+            item {
+                EditSection(title = "Datos") {
+                    if (!state.isTypeLocked) {
+                        Text("Tipo", style = MaterialTheme.typography.labelLarge)
+                        SelectableRow(ContentType.entries, state.type, { it.label }, onTypeChanged)
+                    }
+                    Text("Estado", style = MaterialTheme.typography.labelLarge)
+                    SelectableRow(ContentStatus.entries, state.status, { it.label }, onStatusChanged)
                 }
             }
             item {
-                Text("Estado", fontWeight = FontWeight.SemiBold)
-                SelectableRow(ContentStatus.entries, state.status, { it.label }, onStatusChanged)
-            }
-            item {
-                Text("Calificacion", fontWeight = FontWeight.SemiBold)
-                RatingSelector(state.rating, onRatingChanged)
-            }
-            item {
-                GenreSelector(
-                    type = state.type,
-                    selectedGenres = state.genre,
-                    onGenreChanged = onGenreChanged
-                )
+                EditSection(title = "Calificación y géneros") {
+                    RatingSelector(state.rating, onRatingChanged)
+                    GenreSelector(
+                        type = state.type,
+                        selectedGenres = state.genre,
+                        onGenreChanged = onGenreChanged
+                    )
+                }
             }
             item {
                 CoverPicker(
                     state = state,
-                    onCoverSelected = onCoverSelected
+                    onCoverSelected = onCoverSelected,
+                    onChooseAnotherCover = onChooseAnotherCover
                 )
             }
             item {
@@ -161,25 +166,60 @@ fun EditContentScreen(
             }
         }
     }
+
+    if (state.duplicateCandidates.isNotEmpty()) {
+        DuplicateWarningDialog(
+            duplicates = state.duplicateCandidates,
+            onConfirm = onConfirmDuplicateSave,
+            onDismiss = onDismissDuplicateWarning
+        )
+    }
+}
+
+@Composable
+fun EditSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            content()
+        }
+    }
 }
 
 @Composable
 fun CoverPicker(
     state: EditUiState,
-    onCoverSelected: (CoverSearchResult) -> Unit
+    onCoverSelected: (CoverSearchResult) -> Unit,
+    onChooseAnotherCover: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        modifier = Modifier.animateContentSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         Text("Portada", fontWeight = FontWeight.SemiBold)
         if (state.coverUrl.isNotBlank()) {
-            AsyncImage(
-                model = state.coverUrl,
-                contentDescription = "Portada seleccionada",
-                modifier = Modifier
-                    .size(width = 86.dp, height = 118.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                AsyncImage(
+                    model = state.coverUrl,
+                    contentDescription = "Portada seleccionada",
+                    modifier = Modifier
+                        .size(width = 86.dp, height = 124.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                OutlinedButton(onClick = onChooseAnotherCover) {
+                    Text("Usar otra")
+                }
+            }
         }
         if (state.isSearchingCover) {
             Text(
@@ -194,8 +234,10 @@ fun CoverPicker(
         if (state.coverResults.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Encontré varias portadas", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                state.coverResults.forEach { result ->
-                    CoverResultRow(result = result, onClick = { onCoverSelected(result) })
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(state.coverResults) { result ->
+                        CoverResultCard(result = result, onClick = { onCoverSelected(result) })
+                    }
                 }
             }
         }
@@ -203,37 +245,62 @@ fun CoverPicker(
 }
 
 @Composable
-fun CoverResultRow(result: CoverSearchResult, onClick: () -> Unit) {
+fun CoverResultCard(result: CoverSearchResult, onClick: () -> Unit) {
     Card(
         modifier = Modifier
-            .fillMaxWidth()
+            .width(126.dp)
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
     ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             AsyncImage(
                 model = result.imageUrl,
                 contentDescription = result.title,
                 modifier = Modifier
-                    .size(width = 48.dp, height = 68.dp)
+                    .fillMaxWidth()
+                    .height(154.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop
             )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(result.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (result.subtitle.isNotBlank()) {
-                    Text(result.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                }
+            Text(result.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (result.subtitle.isNotBlank()) {
+                Text(result.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             Text("Usar", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         }
     }
+}
+
+@Composable
+fun DuplicateWarningDialog(
+    duplicates: List<TrackedContent>,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Puede estar duplicado") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Ya tenés contenido parecido guardado:")
+                duplicates.forEach { duplicate ->
+                    Text("• ${duplicate.title} (${duplicate.type.label})", fontWeight = FontWeight.SemiBold)
+                }
+                Text("Podés revisar el título o guardar igual.")
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) { Text("Guardar igual") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Revisar") }
+        }
+    )
 }
 
 @Composable
@@ -248,7 +315,7 @@ fun GenreSelector(
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Generos", fontWeight = FontWeight.SemiBold)
+        Text("Géneros", style = MaterialTheme.typography.labelLarge)
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
